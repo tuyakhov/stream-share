@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Stream Share</title>
+</head>
+<body>
+
+<video id="player" controls autoplay></video>
+<h3 id="url"></h3>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  var socket = io();
+  var player = document.getElementById('player');
+  var room = window.location.hash;
+  var peer = new RTCPeerConnection({ iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] });
+  if (room) {
+      socket.on('broadcasting', function (answer) {
+        console.log(answer);
+        var desc = new RTCSessionDescription(answer.sdp);
+        console.log(desc);
+        peer.ontrack = function(event) {
+          player.srcObject = event.streams[0];
+        };
+        peer.setRemoteDescription(desc).then(function () {
+          return peer.createAnswer().then(function (answer) {
+            socket.emit('answer', answer);
+            return peer.setLocalDescription(answer);
+          })
+        }).catch(console.error);
+      })
+  } else {
+    var handleSuccess = function(stream) {
+      player.srcObject = stream;
+      stream.getTracks().forEach(track => peer.addTrack(track, stream));
+      peer.createOffer().then(function(offer) {
+        return peer.setLocalDescription(offer);
+      })
+        .then(function() {
+          socket.emit('offer', {
+            type: "video-offer",
+            sdp: peer.localDescription
+          });
+        })
+        .catch(function(reason) {
+          // An error occurred, so handle the failure to connect
+        });
+    };
+    socket.on('new peer', function (answer) {
+      peer.setRemoteDescription(answer).then(console.log).catch(console.error);
+    });
+    navigator.mediaDevices.getUserMedia({audio: true, video: true}).then(handleSuccess);
+  }
+</script>
+</body>
+</html>
